@@ -1,0 +1,47 @@
+// Interfaz común de proveedores de texto (ver proyecto-landing-ia.md §9.3).
+// Estos tipos también los importa el frontend, así que no deben depender de Node.
+
+export type Role = 'user' | 'assistant';
+
+export interface Msg {
+  role: Role;
+  content: string;
+}
+
+export type JsonSchema = Record<string, unknown>;
+
+export interface CompleteRequest {
+  system: string;
+  messages: Msg[];
+  schema?: JsonSchema;
+  temperature?: number;
+}
+
+export interface ProviderCapabilities {
+  json: boolean;
+  vision: boolean;
+  images: boolean;
+  maxContext: number;
+}
+
+export interface TextProvider {
+  id: string;
+  model: string;
+  capabilities: ProviderCapabilities;
+  complete(req: CompleteRequest): Promise<string>;
+}
+
+export interface ProviderInfo {
+  id: string;
+  model: string;
+  capabilities: ProviderCapabilities;
+}
+
+export class ProviderError extends Error {
+  constructor(
+    message: string,
+    public status = 502,
+  ) {
+    super(message);
+  }
+}
