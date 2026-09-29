@@ -1,30 +1,23 @@
 // Flujo mínimo: idea -> prompt maestro (editable) -> landing HTML.
-import { MASTER_PROMPT_SYSTEM } from './prompts/masterPrompt';
-import { LANDING_SYSTEM, landingUserMessage } from './prompts/landing';
-import { complete } from './llm';
+import { complete } from '../providers/client.ts';
+import { MASTER_PROMPT_SYSTEM } from './prompts/masterPrompt.ts';
+import { LANDING_SYSTEM, landingUserMessage } from './prompts/landing.ts';
 
-export async function generateMasterPrompt(idea: string, signal?: AbortSignal): Promise<string> {
-  const text = await complete(
-    {
-      system: MASTER_PROMPT_SYSTEM,
-      messages: [{ role: 'user', content: idea }],
-      temperature: 0.7,
-    },
-    signal,
-  );
+export async function generateMasterPrompt(idea: string): Promise<string> {
+  const text = await complete({
+    system: MASTER_PROMPT_SYSTEM,
+    messages: [{ role: 'user', content: idea }],
+    temperature: 0.7,
+  });
   return stripFence(text).trim();
 }
 
-export async function generateLanding(masterPrompt: string, signal?: AbortSignal): Promise<string> {
-  const text = await complete(
-    {
-      system: LANDING_SYSTEM,
-      messages: [{ role: 'user', content: landingUserMessage(masterPrompt) }],
-      temperature: 0.8,
-      maxTokens: 16000,
-    },
-    signal,
-  );
+export async function generateLanding(masterPrompt: string): Promise<string> {
+  const text = await complete({
+    system: LANDING_SYSTEM,
+    messages: [{ role: 'user', content: landingUserMessage(masterPrompt) }],
+    temperature: 0.8,
+  });
   return extractHtml(text);
 }
 
