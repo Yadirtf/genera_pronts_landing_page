@@ -14,6 +14,12 @@ export async function getHealth(): Promise<Health> {
   return res.json();
 }
 
+// Proveedor y modelo elegidos en el selector del chat.
+export interface ModelChoice {
+  provider: string;
+  model: string;
+}
+
 export async function complete(req: CompleteRequest & { provider?: string }): Promise<string> {
   const res = await fetch('/api/complete', {
     method: 'POST',

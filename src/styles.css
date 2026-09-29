@@ -42,13 +42,27 @@ body { margin: 0; background: var(--bg); }
 
 .top {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 20px 0;
   border-bottom: 1px solid var(--border);
 }
 .top h1 { margin: 0; font-size: 20px; letter-spacing: -0.02em; }
 .status { color: var(--muted); font-size: 13px; }
+.top-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.model-picker {
+  min-width: 0;
+  max-width: 260px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.model-picker:disabled { opacity: 0.6; }
 
 .chat {
   flex: 1;

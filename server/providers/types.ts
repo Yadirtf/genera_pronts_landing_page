@@ -15,6 +15,22 @@ export interface CompleteRequest {
   messages: Msg[];
   schema?: JsonSchema;
   temperature?: number;
+  // Modelo elegido en la interfaz; si falta, se usa el de .env.
+  model?: string;
+}
+
+// free: suele entrar en el plan gratuito del proveedor. pro: requiere plan de pago. env: el de .env, sin catalogar.
+export type ModelTier = 'free' | 'pro' | 'env';
+
+export interface ModelOption {
+  id: string;
+  tier: ModelTier;
+}
+
+export interface CompleteResult {
+  text: string;
+  // Modelo que respondió de verdad (puede ser el de respaldo).
+  model: string;
 }
 
 export interface ProviderCapabilities {
@@ -28,13 +44,15 @@ export interface TextProvider {
   id: string;
   model: string;
   capabilities: ProviderCapabilities;
-  complete(req: CompleteRequest): Promise<string>;
+  models: ModelOption[];
+  complete(req: CompleteRequest): Promise<CompleteResult>;
 }
 
 export interface ProviderInfo {
   id: string;
   model: string;
   capabilities: ProviderCapabilities;
+  models: ModelOption[];
 }
 
 export class ProviderError extends Error {
