@@ -1,3 +1,4 @@
+import { modelsFor } from './catalog.ts';
 import { ProviderError, type CompleteRequest, type TextProvider } from './types.ts';
 
 // Sirve para OpenAI, Gemini, OpenRouter, Mistral, Ollama, LM Studio y cualquier API con /chat/completions.
@@ -99,17 +100,19 @@ export function createOpenAICompatibleProvider(config: OpenAICompatibleConfig): 
     id: config.id,
     model: config.model,
     capabilities: { json: true, vision: false, images: false, maxContext: 128_000 },
+    models: modelsFor(config.id, config.model, config.fallbackModel),
 
     async complete(req: CompleteRequest) {
+      const model = req.model || config.model;
       try {
-        return await call(config.model, req);
+        return { text: await call(model, req), model };
       } catch (error) {
         const fallback = config.fallbackModel;
-        if (!fallback || fallback === config.model) throw error;
+        if (!fallback || fallback === model) throw error;
         if (!(error instanceof ProviderError) || !FALLBACK_STATUSES.has(error.status)) throw error;
-        console.warn(`[${config.id}] ${config.model} falló (${error.status}); probando ${fallback}`);
+        console.warn(`[${config.id}] ${model} falló (${error.status}); probando ${fallback}`);
         try {
-          return await call(fallback, req);
+          return { text: await call(fallback, req), model: fallback };
         } catch (fallbackError) {
           const message = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
           throw new ProviderError(

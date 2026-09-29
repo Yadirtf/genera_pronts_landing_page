@@ -56,10 +56,11 @@ if (env.DEFAULT_PROVIDER && !providers.has(env.DEFAULT_PROVIDER)) {
 const app = new Hono().basePath('/api');
 
 app.get('/health', (c) => {
-  const list: ProviderInfo[] = [...providers.values()].map(({ id, model, capabilities }) => ({
+  const list: ProviderInfo[] = [...providers.values()].map(({ id, model, capabilities, models }) => ({
     id,
     model,
     capabilities,
+    models,
   }));
   return c.json({ ok: true, defaultProvider: defaultProviderId ?? null, providers: list });
 });
@@ -85,6 +86,7 @@ app.post('/complete', async (c) => {
     messages: body.messages,
     schema: body.schema,
     temperature: body.temperature,
+    model: typeof body.model === 'string' && body.model.trim() ? body.model.trim() : undefined,
   };
   // Si no se pidió un proveedor concreto y el principal falla, se prueban los demás que tengan clave.
   const candidates = body.provider ? [provider] : [provider, ...[...providers.values()].filter((p) => p !== provider)];
@@ -93,8 +95,9 @@ app.post('/complete', async (c) => {
 
   for (const candidate of candidates) {
     try {
-      const text = await candidate.complete(req);
-      return c.json({ provider: candidate.id, model: candidate.model, text });
+      // El modelo elegido solo aplica a su proveedor; los demás usan el suyo de .env.
+      const result = await candidate.complete(candidate === provider ? req : { ...req, model: undefined });
+      return c.json({ provider: candidate.id, model: result.model, text: result.text });
     } catch (error) {
       lastStatus = error instanceof ProviderError ? error.status : 500;
       const message = error instanceof Error ? error.message : String(error);

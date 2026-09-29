@@ -1,6 +1,36 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { generateLanding, generateMasterPrompt } from '../engine/flow.ts';
-import { getHealth, type Health } from '../providers/client.ts';
+import { getHealth, type Health, type ModelChoice } from '../providers/client.ts';
+import { ModelPicker, choiceKey, parseChoice } from './ModelPicker.tsx';
+
+const CHOICE_STORAGE_KEY = 'lienzo.model';
+
+function readStoredChoice(): string | null {
+  try {
+    return localStorage.getItem(CHOICE_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeChoice(choice: ModelChoice) {
+  try {
+    localStorage.setItem(CHOICE_STORAGE_KEY, choiceKey(choice));
+  } catch {
+    // Sin almacenamiento (modo privado): la elección dura solo esta sesión.
+  }
+}
+
+// Recupera la última elección si sigue disponible; si no, el proveedor y modelo por defecto de .env.
+function initialChoice(health: Health): ModelChoice | null {
+  const stored = readStoredChoice();
+  if (stored) {
+    const c = parseChoice(stored);
+    if (health.providers.some((p) => p.id === c.provider && p.models.some((m) => m.id === c.model))) return c;
+  }
+  const p = health.providers.find((p) => p.id === health.defaultProvider) ?? health.providers[0];
+  return p ? { provider: p.id, model: p.model } : null;
+}
 
 // Versión mínima: idea -> prompt maestro editable -> landing en un iframe aislado.
 type Phase = 'idle' | 'prompting' | 'prompt' | 'building' | 'done';
@@ -15,12 +45,16 @@ export function App() {
   const [html, setHtml] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [choice, setChoice] = useState<ModelChoice | null>(null);
   // Descarta respuestas que llegan después de "Nueva idea".
   const runId = useRef(0);
 
   useEffect(() => {
     getHealth()
-      .then(setHealth)
+      .then((h) => {
+        setHealth(h);
+        setChoice(initialChoice(h));
+      })
       .catch((e: Error) => setHealthError(e.message));
   }, []);
 
@@ -43,7 +77,7 @@ export function App() {
     setDraft('');
     setHtml('');
     setPhase('prompting');
-    const result = await run(() => generateMasterPrompt(clean));
+    const result = await run(() => generateMasterPrompt(clean, choice ?? undefined));
     if (result === undefined) {
       setPhase('idle');
       setDraft(clean);
@@ -55,7 +89,7 @@ export function App() {
 
   async function build() {
     setPhase('building');
-    const result = await run(() => generateLanding(masterPrompt));
+    const result = await run(() => generateLanding(masterPrompt, choice ?? undefined));
     if (result === undefined) {
       setPhase(html ? 'done' : 'prompt');
       return;
@@ -97,27 +131,29 @@ export function App() {
 
   const busy = phase === 'prompting' || phase === 'building';
   const started = phase !== 'idle';
-  const provider = health?.providers.find((p) => p.id === health.defaultProvider);
+  function pick(next: ModelChoice) {
+    setChoice(next);
+    storeChoice(next);
+  }
 
   return (
     <main className="shell">
       <header className="top">
         <h1>Lienzo</h1>
-        {started ? (
-          <button className="btn ghost" onClick={reset}>
-            Nueva idea
-          </button>
-        ) : (
-          <span className="status">
-            {healthError
-              ? 'Servidor local sin conexión'
-              : !health
-                ? 'Conectando…'
-                : provider
-                  ? `${provider.id} · ${provider.model}`
-                  : 'Sin proveedor: configura .env'}
-          </span>
-        )}
+        <div className="top-actions">
+          {health && choice ? (
+            <ModelPicker health={health} value={choice} onChange={pick} disabled={busy} />
+          ) : (
+            <span className="status">
+              {healthError ? 'Servidor local sin conexión' : !health ? 'Conectando…' : 'Sin proveedor: configura .env'}
+            </span>
+          )}
+          {started && (
+            <button className="btn ghost" onClick={reset}>
+              Nueva idea
+            </button>
+          )}
+        </div>
       </header>
 
       <section className="chat">

@@ -33,6 +33,8 @@ curl -s localhost:5173/api/complete -H 'content-type: application/json' \
 
 Proveedores disponibles: `anthropic`, `openai`, `gemini`, `openrouter` y `mistral`. `.env.example` ya trae las URLs y modelos por defecto de cada uno; basta con pegar la clave. Si configuras varios, `DEFAULT_PROVIDER` decide cuál se usa y los demás sirven de respaldo si ese falla.
 
+En el chat, el selector de la cabecera permite elegir proveedor y modelo para cada generación. Solo aparecen los proveedores con clave en `.env`, agrupados en gratis y de pago según `server/providers/catalog.ts` (orientativo: cada proveedor cambia sus planes). Para ofrecer otro modelo, añádelo a ese archivo o ponlo en `<PROVEEDOR>_MODEL`.
+
 Ante un 429 o 5xx el servidor reintenta hasta 3 veces (2 s, 5 s, 10 s, o lo que indique `retry-after`). Si el modelo sigue fallando, prueba `<PROVEEDOR>_FALLBACK_MODEL` y, después, los otros proveedores con clave.
 
 Ambos adaptadores implementan la interfaz `TextProvider` de `server/providers/types.ts`:

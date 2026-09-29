@@ -1,10 +1,11 @@
 // Flujo mínimo: idea -> prompt maestro (editable) -> landing HTML.
-import { complete } from '../providers/client.ts';
+import { complete, type ModelChoice } from '../providers/client.ts';
 import { MASTER_PROMPT_SYSTEM } from './prompts/masterPrompt.ts';
 import { LANDING_SYSTEM, landingUserMessage } from './prompts/landing.ts';
 
-export async function generateMasterPrompt(idea: string): Promise<string> {
+export async function generateMasterPrompt(idea: string, choice?: ModelChoice): Promise<string> {
   const text = await complete({
+    ...choice,
     system: MASTER_PROMPT_SYSTEM,
     messages: [{ role: 'user', content: idea }],
     temperature: 0.7,
@@ -12,8 +13,9 @@ export async function generateMasterPrompt(idea: string): Promise<string> {
   return stripFence(text).trim();
 }
 
-export async function generateLanding(masterPrompt: string): Promise<string> {
+export async function generateLanding(masterPrompt: string, choice?: ModelChoice): Promise<string> {
   const text = await complete({
+    ...choice,
     system: LANDING_SYSTEM,
     messages: [{ role: 'user', content: landingUserMessage(masterPrompt) }],
     temperature: 0.8,
