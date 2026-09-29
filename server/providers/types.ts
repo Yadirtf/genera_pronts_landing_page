@@ -45,7 +45,8 @@ export interface TextProvider {
   model: string;
   capabilities: ProviderCapabilities;
   models: ModelOption[];
-  complete(req: CompleteRequest): Promise<CompleteResult>;
+  // signal: se aborta si el navegador cancela la petición (p. ej. "Nueva idea").
+  complete(req: CompleteRequest, signal?: AbortSignal): Promise<CompleteResult>;
 }
 
 export interface ProviderInfo {

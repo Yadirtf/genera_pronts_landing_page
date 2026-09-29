@@ -88,21 +88,26 @@ app.post('/complete', async (c) => {
     temperature: body.temperature,
     model: typeof body.model === 'string' && body.model.trim() ? body.model.trim() : undefined,
   };
-  // Si no se pidió un proveedor concreto y el principal falla, se prueban los demás que tengan clave.
-  const candidates = body.provider ? [provider] : [provider, ...[...providers.values()].filter((p) => p !== provider)];
+  // Si el proveedor elegido está saturado o sin cuota, se prueban los demás que tengan clave (con su modelo de .env).
+  const candidates = [provider, ...[...providers.values()].filter((p) => p !== provider)];
+  // Se aborta si el navegador cancela ("Nueva idea") o se cierra, para no dejar reintentos colgados.
+  const signal = c.req.raw.signal;
   const errors: string[] = [];
   let lastStatus = 502;
 
   for (const candidate of candidates) {
     try {
       // El modelo elegido solo aplica a su proveedor; los demás usan el suyo de .env.
-      const result = await candidate.complete(candidate === provider ? req : { ...req, model: undefined });
+      const result = await candidate.complete(candidate === provider ? req : { ...req, model: undefined }, signal);
       return c.json({ provider: candidate.id, model: result.model, text: result.text });
     } catch (error) {
       lastStatus = error instanceof ProviderError ? error.status : 500;
       const message = error instanceof Error ? error.message : String(error);
       console.error(`[${candidate.id}]`, message);
       errors.push(candidates.length > 1 ? `[${candidate.id}] ${message}` : message);
+      if (signal.aborted) return c.json({ error: 'Cancelado.' }, 499 as 400);
+      // Una petición mal formada falla igual en cualquier proveedor.
+      if (lastStatus === 400) break;
     }
   }
 

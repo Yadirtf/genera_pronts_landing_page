@@ -16,7 +16,7 @@ export function createAnthropicProvider(config: AnthropicConfig): TextProvider {
     capabilities: { json: true, vision: true, images: false, maxContext: 1_000_000 },
     models: modelsFor('anthropic', config.model),
 
-    async complete(req: CompleteRequest) {
+    async complete(req: CompleteRequest, signal?: AbortSignal) {
       const model = req.model || config.model;
       // Los modelos actuales de Claude rechazan `temperature`, por eso no se envía.
       // `fallbacks: "default"` reintenta en otro modelo si el principal rechaza la petición.
@@ -33,7 +33,7 @@ export function createAnthropicProvider(config: AnthropicConfig): TextProvider {
             ...(req.schema && {
               output_config: { format: { type: 'json_schema', schema: req.schema } },
             }),
-          })
+          }, { signal })
           .finalMessage();
       } catch (error) {
         if (error instanceof Anthropic.APIError) {

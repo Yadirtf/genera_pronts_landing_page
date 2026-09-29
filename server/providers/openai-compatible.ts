@@ -25,7 +25,16 @@ const MAX_RETRY_AFTER_MS = 30_000;
 // Cambiar de modelo tiene sentido si este está saturado, sin cuota o no disponible para la cuenta.
 const FALLBACK_STATUSES = new Set([403, 404, 429, 500, 502, 503, 504]);
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    }, { once: true });
+  });
+}
 
 function retryAfterMs(res: Response): number | undefined {
   const seconds = Number(res.headers.get('retry-after'));
@@ -50,7 +59,7 @@ export function createOpenAICompatibleProvider(config: OpenAICompatibleConfig): 
     return '';
   }
 
-  async function call(model: string, req: CompleteRequest): Promise<string> {
+  async function call(model: string, req: CompleteRequest, signal?: AbortSignal, retries = RETRY_DELAYS_MS.length): Promise<string> {
     const body = JSON.stringify({
       model,
       messages: [{ role: 'system', content: req.system }, ...req.messages],
@@ -71,6 +80,7 @@ export function createOpenAICompatibleProvider(config: OpenAICompatibleConfig): 
           ...(config.apiKey && { authorization: `Bearer ${config.apiKey}` }),
         },
         body,
+        signal,
       });
 
       if (res.ok) {
@@ -84,10 +94,10 @@ export function createOpenAICompatibleProvider(config: OpenAICompatibleConfig): 
 
       const detail = (await res.text()).slice(0, 500);
       const noQuota = res.status === 429 && /limit:\s*0\b/.test(detail);
-      if (RETRYABLE.has(res.status) && !noQuota && attempt < RETRY_DELAYS_MS.length) {
+      if (RETRYABLE.has(res.status) && !noQuota && attempt < retries) {
         const wait = Math.min(retryAfterMs(res) ?? RETRY_DELAYS_MS[attempt], MAX_RETRY_AFTER_MS);
         console.warn(`[${config.id}] ${model} respondió ${res.status}; reintento ${attempt + 1} en ${wait / 1000}s`);
-        await sleep(wait);
+        await sleep(wait, signal);
         continue;
       }
 
@@ -102,17 +112,18 @@ export function createOpenAICompatibleProvider(config: OpenAICompatibleConfig): 
     capabilities: { json: true, vision: false, images: false, maxContext: 128_000 },
     models: modelsFor(config.id, config.model, config.fallbackModel),
 
-    async complete(req: CompleteRequest) {
+    async complete(req: CompleteRequest, signal?: AbortSignal) {
       const model = req.model || config.model;
       try {
-        return { text: await call(model, req), model };
+        return { text: await call(model, req, signal), model };
       } catch (error) {
         const fallback = config.fallbackModel;
-        if (!fallback || fallback === model) throw error;
+        if (!fallback || fallback === model || signal?.aborted) throw error;
         if (!(error instanceof ProviderError) || !FALLBACK_STATUSES.has(error.status)) throw error;
         console.warn(`[${config.id}] ${model} falló (${error.status}); probando ${fallback}`);
         try {
-          return { text: await call(fallback, req), model: fallback };
+          // Un solo reintento: si también está saturado, conviene pasar pronto a otro proveedor.
+          return { text: await call(fallback, req, signal, 1), model: fallback };
         } catch (fallbackError) {
           const message = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
           throw new ProviderError(
