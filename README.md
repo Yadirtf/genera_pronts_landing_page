@@ -15,6 +15,12 @@ npm start
 - **Servidor local** (`server/index.ts`, Hono) en `http://127.0.0.1:8787`. Guarda las claves y hace de proxy a los proveedores.
 - **Interfaz** (Vite + React) en `http://localhost:5173`. Redirige `/api` al servidor local.
 
+## Mis landings y editor
+
+Cada landing construida se guarda sola en el navegador (IndexedDB, base `lienzo`) con su HTML, el prompt maestro, el historial del chat, el modelo y la fecha. **Mis landings** (`#/banco`) las muestra en tarjetas con miniatura; al abrir una se ve el historial del chat y la versión actual.
+
+**Editar** (debajo de la landing, junto a Descargar y Pantalla completa) abre el editor (`#/editar/<id>`): código a la izquierda con CodeMirror, vista previa en vivo a la derecha. La barra que los separa se arrastra (o se mueve con las flechas) para cambiar el ancho; arriba de la vista previa se elige Ajustar (la página se adapta al ancho del panel), Móvil (390 px), Tablet (768 px) o Escritorio (1440 px, escalado si no cabe). Los cambios se guardan solos en el banco.
+
 ## API del servidor local
 
 | Ruta | Descripción |
