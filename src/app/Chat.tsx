@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { generateLanding, generateMasterPrompt, type Generated } from '../engine/flow.ts';
+import { generateLanding, generateMasterPrompt, recommendTechniques, reviewLanding } from '../engine/flow.ts';
+import { TECHNIQUES, type Recommendation, type TechniqueId } from '../engine/techniques.ts';
 import { getHealth, type Health, type ModelChoice } from '../providers/client.ts';
 import { ModelPicker, choiceKey, parseChoice } from './ModelPicker.tsx';
 import { getLanding, newId, saveLanding, titleFor, type ChatEntry } from '../storage/db.ts';
@@ -35,8 +36,8 @@ function initialChoice(health: Health): ModelChoice | null {
   return p ? { provider: p.id, model: p.model } : null;
 }
 
-// Versión mínima: idea -> prompt maestro editable -> landing en un iframe aislado.
-type Phase = 'idle' | 'prompting' | 'prompt' | 'building' | 'done';
+// Idea -> elegir técnicas (3 recomendadas) -> prompt maestro editable -> landing en un iframe aislado.
+type Phase = 'idle' | 'recommending' | 'choosing' | 'prompting' | 'prompt' | 'building' | 'reviewing' | 'done';
 
 // El chat sigue montado (oculto) mientras se ve el banco o el editor, para no perder una generación en curso.
 export function Chat({ active }: { active: boolean }) {
@@ -45,6 +46,11 @@ export function Chat({ active }: { active: boolean }) {
   const [phase, setPhase] = useState<Phase>('idle');
   const [draft, setDraft] = useState('');
   const [idea, setIdea] = useState('');
+  const [recommended, setRecommended] = useState<Recommendation[]>([]);
+  const [recommendedBy, setRecommendedBy] = useState<Origin | null>(null);
+  const [selected, setSelected] = useState<TechniqueId[]>([]);
+  // Técnicas con las que se escribió el prompt maestro actual.
+  const [promptTechniques, setPromptTechniques] = useState<TechniqueId[]>([]);
   const [masterPrompt, setMasterPrompt] = useState('');
   const [html, setHtml] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +88,7 @@ export function Chat({ active }: { active: boolean }) {
     };
   }, [active, savedId]);
 
-  async function run(fn: (signal: AbortSignal) => Promise<Generated>): Promise<Generated | undefined> {
+  async function run<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T | undefined> {
     const id = ++runId.current;
     abort.current?.abort();
     const controller = new AbortController();
@@ -104,13 +110,34 @@ export function Chat({ active }: { active: boolean }) {
     ideaAt.current = Date.now();
     setDraft('');
     setHtml('');
-    setPhase('prompting');
-    const result = await run((signal) => generateMasterPrompt(clean, choice ?? undefined, signal));
+    setPhase('recommending');
+    const result = await run((signal) => recommendTechniques(clean, choice ?? undefined, signal));
     if (result === undefined) {
       setPhase('idle');
       setDraft(clean);
       return;
     }
+    setRecommended(result.value);
+    setSelected(result.value.map((r) => r.id));
+    setRecommendedBy({ by: result, asked: choice });
+    if (result.fallback) setError('El modelo no devolvió una recomendación válida: te propongo 3 técnicas por defecto.');
+    setPhase('choosing');
+  }
+
+  function toggle(id: TechniqueId) {
+    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  }
+
+  async function writePrompt() {
+    const techniques = TECHNIQUES.map((t) => t.id).filter((id) => selected.includes(id));
+    const back = masterPrompt ? (html ? 'done' : 'prompt') : 'choosing';
+    setPhase('prompting');
+    const result = await run((signal) => generateMasterPrompt(idea, techniques, choice ?? undefined, signal));
+    if (result === undefined) {
+      setPhase(back);
+      return;
+    }
+    setPromptTechniques(techniques);
     setMasterPrompt(result.value);
     generatedPrompt.current = {
       role: 'assistant',
@@ -125,35 +152,54 @@ export function Chat({ active }: { active: boolean }) {
 
   async function build() {
     setPhase('building');
-    const result = await run((signal) => generateLanding(masterPrompt, choice ?? undefined, signal));
-    if (result === undefined) {
+    const built = await run((signal) => generateLanding(masterPrompt, choice ?? undefined, signal));
+    if (built === undefined) {
       setPhase(html ? 'done' : 'prompt');
       return;
     }
-    setHtml(result.value);
-    setHtmlBy({ by: result, asked: choice });
+    setHtml(built.value);
+    setHtmlBy({ by: built, asked: choice });
+    let result = built;
+    let reviewed = false;
+    if (promptTechniques.includes('critic')) {
+      setPhase('reviewing');
+      const before = runId.current;
+      const review = await run((signal) => reviewLanding(masterPrompt, built.value, choice ?? undefined, signal));
+      // Si se canceló ("Nueva idea"), no guardar nada; si falló, se queda la versión sin revisar y el error visible.
+      if (runId.current !== before + 1) return;
+      if (review) {
+        result = review;
+        reviewed = true;
+        setHtml(review.value);
+        setHtmlBy({ by: review, asked: choice });
+      }
+    }
     setPhase('done');
     try {
-      await persist(result.value, masterPrompt, { provider: result.provider, model: result.model });
+      await persist(result.value, masterPrompt, { provider: result.provider, model: result.model }, reviewed);
     } catch (e) {
       setError(`La landing se generó pero no se pudo guardar en el banco: ${(e as Error).message}`);
     }
   }
 
   // Guarda la landing en el banco: la primera construcción crea la entrada y las siguientes la actualizan.
-  async function persist(nextHtml: string, usedPrompt: string, by: ModelChoice) {
+  async function persist(nextHtml: string, usedPrompt: string, by: ModelChoice, reviewed: boolean) {
     const now = Date.now();
     const existing = savedId ? await getLanding(savedId) : undefined;
     const chat: ChatEntry[] = existing
       ? [...existing.chat]
       : [{ role: 'user', kind: 'idea', text: idea, at: ideaAt.current || now }];
+    const lastTechniques = chat.filter((e) => e.kind === 'techniques').pop();
+    const techniquesText = techniquesSummary(promptTechniques);
+    if (promptTechniques.length && lastTechniques?.text !== techniquesText)
+      chat.push({ role: 'user', kind: 'techniques', text: techniquesText, at: generatedPrompt.current?.at ?? now });
     if (!existing && generatedPrompt.current) chat.push(generatedPrompt.current);
     const lastPrompt = chat.filter((e) => e.kind === 'prompt').pop();
     if (lastPrompt?.text !== usedPrompt) chat.push({ role: 'user', kind: 'prompt', text: usedPrompt, at: now });
     chat.push({
       role: 'assistant',
       kind: 'landing',
-      text: existing ? 'Reconstruí la landing.' : 'Construí la landing.',
+      text: `${existing ? 'Reconstruí la landing' : 'Construí la landing'}${reviewed ? ' y el agente crítico la revisó.' : '.'}`,
       at: now,
       by,
     });
@@ -163,6 +209,7 @@ export function Chat({ active }: { active: boolean }) {
       title: titleFor(nextHtml, idea),
       idea,
       masterPrompt: usedPrompt,
+      techniques: promptTechniques,
       html: nextHtml,
       chat,
       by,
@@ -181,6 +228,10 @@ export function Chat({ active }: { active: boolean }) {
     generatedPrompt.current = null;
     setPhase('idle');
     setIdea('');
+    setRecommended([]);
+    setRecommendedBy(null);
+    setSelected([]);
+    setPromptTechniques([]);
     setMasterPrompt('');
     setHtml('');
     setError(null);
@@ -203,7 +254,7 @@ export function Chat({ active }: { active: boolean }) {
     }
   }
 
-  const busy = phase === 'prompting' || phase === 'building';
+  const busy = phase === 'recommending' || phase === 'prompting' || phase === 'building' || phase === 'reviewing';
   const started = phase !== 'idle';
   function pick(next: ModelChoice) {
     setChoice(next);
@@ -238,13 +289,58 @@ export function Chat({ active }: { active: boolean }) {
           <div className="empty">
             <h2>¿Qué landing page necesitas?</h2>
             <p>
-              Describe tu idea con tus palabras. Primero escribiré un prompt maestro que podrás revisar, y luego
-              construiré la página.
+              Describe tu idea con tus palabras. Te recomendaré técnicas de diseño para tu caso, escribiré un prompt
+              maestro que podrás revisar, y luego construiré la página.
             </p>
           </div>
         )}
 
         {started && <div className="bubble user">{idea}</div>}
+
+        {phase === 'recommending' && (
+          <div className="bubble assistant pending">Eligiendo las técnicas que más le sirven a tu landing…</div>
+        )}
+
+        {recommended.length > 0 && started && (
+          <div className="card">
+            <p className="label">
+              Técnicas de diseño · te recomiendo 3 para tu idea; marca las que quieras
+              {recommendedBy && <GeneratedBy {...recommendedBy} />}
+            </p>
+            <ul className="techniques">
+              {orderTechniques(recommended).map(({ technique, why }) => {
+                const on = selected.includes(technique.id);
+                return (
+                  <li key={technique.id}>
+                    <button
+                      type="button"
+                      className={`technique${on ? ' on' : ''}`}
+                      aria-pressed={on}
+                      onClick={() => toggle(technique.id)}
+                      disabled={busy}
+                    >
+                      <span className="technique-head">
+                        <span className="technique-check" aria-hidden="true">
+                          {on ? '✓' : ''}
+                        </span>
+                        <strong>{technique.name}</strong>
+                        {why !== undefined && <span className="badge">Recomendada</span>}
+                      </span>
+                      <span className="technique-summary">{technique.summary}</span>
+                      {why && <span className="technique-summary technique-why">Para tu idea: {why}</span>}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="actions">
+              <button className="btn" onClick={writePrompt} disabled={busy || selected.length === 0}>
+                {masterPrompt ? 'Reescribir prompt maestro' : 'Escribir prompt maestro'} ({selected.length}{' '}
+                {selected.length === 1 ? 'técnica' : 'técnicas'})
+              </button>
+            </div>
+          </div>
+        )}
 
         {phase === 'prompting' && <div className="bubble assistant pending">Pensando como experto en tu sector…</div>}
 
@@ -271,6 +367,10 @@ export function Chat({ active }: { active: boolean }) {
 
         {phase === 'building' && (
           <div className="bubble assistant pending">Construyendo la landing… puede tardar un par de minutos.</div>
+        )}
+
+        {phase === 'reviewing' && (
+          <div className="bubble assistant pending">El agente crítico está revisando y corrigiendo la landing…</div>
         )}
 
         {html && started && (
@@ -326,6 +426,25 @@ export function Chat({ active }: { active: boolean }) {
       )}
     </main>
   );
+}
+
+// Recomendadas primero (en el orden del modelo, con su porqué); luego el resto del catálogo.
+function orderTechniques(recommended: Recommendation[]) {
+  const first = recommended.flatMap((r) => {
+    const technique = TECHNIQUES.find((t) => t.id === r.id);
+    return technique ? [{ technique, why: r.why }] : [];
+  });
+  const rest = TECHNIQUES.filter((t) => !recommended.some((r) => r.id === t.id)).map((technique) => ({
+    technique,
+    why: undefined as string | undefined,
+  }));
+  return [...first, ...rest];
+}
+
+function techniquesSummary(ids: TechniqueId[]): string {
+  return `Técnicas: ${TECHNIQUES.filter((t) => ids.includes(t.id))
+    .map((t) => t.name)
+    .join(', ')}`;
 }
 
 // "· con gemini · gemini-flash-latest", y un aviso si respondió un respaldo en vez del modelo elegido.
