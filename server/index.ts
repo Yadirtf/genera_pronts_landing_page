@@ -18,19 +18,37 @@ if (env.ANTHROPIC_API_KEY) {
   );
 }
 
-// Un proveedor local (Ollama, LM Studio) no necesita clave, solo la URL.
-if (env.OPENAI_API_KEY || env.OPENAI_BASE_URL) {
+// Proveedores con API compatible con OpenAI: cada uno lee <PREFIJO>_API_KEY, <PREFIJO>_BASE_URL y <PREFIJO>_MODEL.
+const openAICompatible = [
+  { id: 'openai', prefix: 'OPENAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5' },
+  { id: 'gemini', prefix: 'GEMINI', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-pro' },
+  { id: 'openrouter', prefix: 'OPENROUTER', baseUrl: 'https://openrouter.ai/api/v1', model: 'openrouter/auto' },
+  { id: 'mistral', prefix: 'MISTRAL', baseUrl: 'https://api.mistral.ai/v1', model: 'mistral-large-latest' },
+];
+
+for (const p of openAICompatible) {
+  const apiKey = env[`${p.prefix}_API_KEY`];
+  const baseUrl = env[`${p.prefix}_BASE_URL`];
+  // Un servidor local (Ollama, LM Studio en OPENAI_BASE_URL) no necesita clave, solo una URL distinta de la oficial.
+  const isLocal = p.id === 'openai' && !!baseUrl && baseUrl !== p.baseUrl;
+  if (!apiKey && !isLocal) continue;
   providers.set(
-    'openai',
+    p.id,
     createOpenAICompatibleProvider({
-      baseUrl: env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
-      apiKey: env.OPENAI_API_KEY,
-      model: env.OPENAI_MODEL || 'gpt-5',
+      id: p.id,
+      baseUrl: baseUrl || p.baseUrl,
+      apiKey,
+      model: env[`${p.prefix}_MODEL`] || p.model,
     }),
   );
 }
 
-const defaultProviderId = env.DEFAULT_PROVIDER || providers.keys().next().value;
+const defaultProviderId =
+  env.DEFAULT_PROVIDER && providers.has(env.DEFAULT_PROVIDER) ? env.DEFAULT_PROVIDER : providers.keys().next().value;
+
+if (env.DEFAULT_PROVIDER && !providers.has(env.DEFAULT_PROVIDER)) {
+  console.warn(`DEFAULT_PROVIDER=${env.DEFAULT_PROVIDER} no tiene clave en .env; se usa ${defaultProviderId ?? 'ninguno'}.`);
+}
 
 const app = new Hono().basePath('/api');
 
