@@ -1,7 +1,8 @@
 import { ProviderError, type CompleteRequest, type TextProvider } from './types.ts';
 
-// Sirve para OpenAI, Ollama, LM Studio, OpenRouter y cualquier API con /chat/completions.
+// Sirve para OpenAI, Gemini, OpenRouter, Mistral, Ollama, LM Studio y cualquier API con /chat/completions.
 export interface OpenAICompatibleConfig {
+  id: string;
   baseUrl: string;
   apiKey?: string;
   model: string;
@@ -15,7 +16,7 @@ export function createOpenAICompatibleProvider(config: OpenAICompatibleConfig): 
   const baseUrl = config.baseUrl.replace(/\/+$/, '');
 
   return {
-    id: 'openai',
+    id: config.id,
     model: config.model,
     capabilities: { json: true, vision: false, images: false, maxContext: 128_000 },
 
