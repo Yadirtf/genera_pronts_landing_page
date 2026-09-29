@@ -21,9 +21,9 @@ if (env.ANTHROPIC_API_KEY) {
 // Proveedores con API compatible con OpenAI: cada uno lee <PREFIJO>_API_KEY, <PREFIJO>_BASE_URL y <PREFIJO>_MODEL.
 const openAICompatible = [
   { id: 'openai', prefix: 'OPENAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5' },
-  { id: 'gemini', prefix: 'GEMINI', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-pro' },
+  { id: 'gemini', prefix: 'GEMINI', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-flash-latest' },
   { id: 'openrouter', prefix: 'OPENROUTER', baseUrl: 'https://openrouter.ai/api/v1', model: 'openrouter/auto' },
-  { id: 'mistral', prefix: 'MISTRAL', baseUrl: 'https://api.mistral.ai/v1', model: 'mistral-large-latest' },
+  { id: 'mistral', prefix: 'MISTRAL', baseUrl: 'https://api.mistral.ai/v1', model: 'mistral-small-latest' },
 ];
 
 for (const p of openAICompatible) {
@@ -39,6 +39,7 @@ for (const p of openAICompatible) {
       baseUrl: baseUrl || p.baseUrl,
       apiKey,
       model: env[`${p.prefix}_MODEL`] || p.model,
+      modelVar: `${p.prefix}_MODEL`,
     }),
   );
 }

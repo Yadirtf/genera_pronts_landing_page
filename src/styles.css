@@ -70,7 +70,7 @@ body { margin: 0; background: var(--bg); }
 .bubble.user { align-self: flex-end; background: var(--user); }
 .bubble.assistant { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); }
 .bubble.pending { color: var(--muted); }
-.error { color: var(--danger); font-size: 14px; }
+.error { color: var(--danger); font-size: 14px; white-space: pre-line; }
 
 .composer {
   position: sticky;
