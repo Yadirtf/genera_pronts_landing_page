@@ -7,7 +7,7 @@ Recibes la idea del usuario en lenguaje natural. Tu trabajo NO es escribir la la
 
 Antes de decidir, piensa como experto: enuncia en tu cabeza los principios generales del sector y luego aplícalos al caso. Si falta información, completa con supuestos razonables y márcalos como tales; no hagas preguntas.
 
-Escribe el prompt maestro en el idioma de la idea del usuario, en Markdown, con EXACTAMENTE estas secciones y en este orden:
+Escribe el prompt maestro en el idioma de la idea del usuario, en Markdown, con EXACTAMENTE estas secciones y en este orden (la 5 solo si hay técnicas elegidas):
 
 # Prompt maestro
 
@@ -40,5 +40,8 @@ Lista ordenada de secciones. Para cada una: nombre, qué objeción resuelve o qu
 - No imitar marcas, organizaciones ni personas reales ajenas al usuario.
 - Si el sector es regulado (salud, finanzas, legal, alcohol, apuestas, menores): sin promesas de resultado y con los avisos necesarios.
 - Si hay formulario que recoge datos personales: incluir aviso de privacidad.
+
+## 5. Técnicas aplicadas
+Solo si el usuario eligió técnicas: una línea por técnica con su nombre y cómo se concretó en este encargo (la cadena semilla exacta, las palabras prohibidas, la lista de verificación del crítico, los prompts de imagen o vídeo…). Quien construya la landing debe cumplir cada línea.
 
 Sé concreto y denso: nada de relleno. Responde solo con el prompt maestro, sin introducción ni despedida.`;

@@ -317,3 +317,48 @@ a.btn { display: inline-block; text-decoration: none; white-space: nowrap; }
   .ide-preview { border-top: 1px solid var(--border); }
 }
 .ide-stage.device.scaled { justify-content: flex-start; }
+
+/* Elección de técnicas antes del prompt maestro */
+.techniques { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.technique {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 12px 14px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.technique:hover:not(:disabled) { border-color: var(--muted); }
+.technique.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.technique:disabled { cursor: default; opacity: 0.7; }
+.technique-head { display: flex; align-items: center; gap: 8px; }
+.technique-check {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  font-size: 12px;
+  color: var(--accent-text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.technique.on .technique-check { background: var(--accent); border-color: var(--accent); }
+.technique-summary { padding-left: 26px; font-size: 13px; line-height: 1.45; color: var(--muted); }
+.badge {
+  margin-left: auto;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--user);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.technique-why { color: var(--text); }

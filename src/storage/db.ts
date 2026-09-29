@@ -1,10 +1,11 @@
 // Banco local de landings en IndexedDB: cada landing guarda su HTML, el prompt maestro y el chat que la produjo.
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { ModelChoice } from '../providers/client.ts';
+import type { TechniqueId } from '../engine/techniques.ts';
 
 export interface ChatEntry {
   role: 'user' | 'assistant';
-  kind: 'idea' | 'prompt' | 'landing' | 'edit';
+  kind: 'idea' | 'techniques' | 'prompt' | 'landing' | 'edit';
   text: string;
   at: number;
   // Proveedor y modelo que respondió (solo en mensajes del asistente generados por IA).
@@ -16,6 +17,8 @@ export interface Landing {
   title: string;
   idea: string;
   masterPrompt: string;
+  // Técnicas de diseño elegidas antes del prompt maestro (landings anteriores no las tienen).
+  techniques?: TechniqueId[];
   html: string;
   chat: ChatEntry[];
   by?: ModelChoice;
