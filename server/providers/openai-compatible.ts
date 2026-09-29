@@ -6,6 +6,8 @@ export interface OpenAICompatibleConfig {
   baseUrl: string;
   apiKey?: string;
   model: string;
+  // Variable de .env que fija el modelo, para decirle al usuario qué cambiar si el modelo falla.
+  modelVar?: string;
 }
 
 interface ChatCompletionResponse {
@@ -43,8 +45,15 @@ export function createOpenAICompatibleProvider(config: OpenAICompatibleConfig): 
       });
 
       if (!res.ok) {
-        const detail = await res.text();
-        throw new ProviderError(`${baseUrl} ${res.status}: ${detail.slice(0, 500)}`, res.status);
+        const detail = (await res.text()).slice(0, 500);
+        // 403/404 suelen ser un modelo retirado o fuera de tu plan; 401 es la clave.
+        const hint =
+          res.status === 401
+            ? `Revisa la API key de ${config.id} en .env.`
+            : (res.status === 403 || res.status === 404) && config.modelVar
+              ? `El modelo "${config.model}" no está disponible para tu cuenta de ${config.id}: cambia ${config.modelVar} en .env y reinicia npm start.`
+              : '';
+        throw new ProviderError(`${hint ? `${hint}\n\n` : ''}${baseUrl} ${res.status}: ${detail}`, res.status);
       }
 
       const data = (await res.json()) as ChatCompletionResponse;
