@@ -18,7 +18,8 @@ if (env.ANTHROPIC_API_KEY) {
   );
 }
 
-// Proveedores con API compatible con OpenAI: cada uno lee <PREFIJO>_API_KEY, <PREFIJO>_BASE_URL y <PREFIJO>_MODEL.
+// Proveedores con API compatible con OpenAI: cada uno lee <PREFIJO>_API_KEY, <PREFIJO>_BASE_URL,
+// <PREFIJO>_MODEL y <PREFIJO>_FALLBACK_MODEL (opcional, se usa si el principal falla).
 const openAICompatible = [
   { id: 'openai', prefix: 'OPENAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5' },
   { id: 'gemini', prefix: 'GEMINI', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-flash-latest' },
@@ -39,7 +40,8 @@ for (const p of openAICompatible) {
       baseUrl: baseUrl || p.baseUrl,
       apiKey,
       model: env[`${p.prefix}_MODEL`] || p.model,
-      modelVar: `${p.prefix}_MODEL`,
+      fallbackModel: env[`${p.prefix}_FALLBACK_MODEL`] || undefined,
+      envPrefix: p.prefix,
     }),
   );
 }
@@ -78,20 +80,30 @@ app.post('/complete', async (c) => {
     );
   }
 
-  try {
-    const text = await provider.complete({
-      system: body.system,
-      messages: body.messages,
-      schema: body.schema,
-      temperature: body.temperature,
-    });
-    return c.json({ provider: provider.id, model: provider.model, text });
-  } catch (error) {
-    const status = error instanceof ProviderError ? error.status : 500;
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`[${provider.id}]`, message);
-    return c.json({ error: message }, (status >= 400 && status < 600 ? status : 502) as 502);
+  const req: CompleteRequest = {
+    system: body.system,
+    messages: body.messages,
+    schema: body.schema,
+    temperature: body.temperature,
+  };
+  // Si no se pidió un proveedor concreto y el principal falla, se prueban los demás que tengan clave.
+  const candidates = body.provider ? [provider] : [provider, ...[...providers.values()].filter((p) => p !== provider)];
+  const errors: string[] = [];
+  let lastStatus = 502;
+
+  for (const candidate of candidates) {
+    try {
+      const text = await candidate.complete(req);
+      return c.json({ provider: candidate.id, model: candidate.model, text });
+    } catch (error) {
+      lastStatus = error instanceof ProviderError ? error.status : 500;
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[${candidate.id}]`, message);
+      errors.push(candidates.length > 1 ? `[${candidate.id}] ${message}` : message);
+    }
   }
+
+  return c.json({ error: errors.join('\n\n') }, (lastStatus >= 400 && lastStatus < 600 ? lastStatus : 502) as 502);
 });
 
 const port = Number(env.PORT) || 8787;
