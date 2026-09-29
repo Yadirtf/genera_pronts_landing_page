@@ -1,26 +1,36 @@
 // Flujo mínimo: idea -> prompt maestro (editable) -> landing HTML.
 import { complete, type ModelChoice } from '../providers/client.ts';
+
+export interface Generated extends ModelChoice {
+  value: string;
+}
 import { MASTER_PROMPT_SYSTEM } from './prompts/masterPrompt.ts';
 import { LANDING_SYSTEM, landingUserMessage } from './prompts/landing.ts';
 
-export async function generateMasterPrompt(idea: string, choice?: ModelChoice): Promise<string> {
-  const text = await complete({
-    ...choice,
-    system: MASTER_PROMPT_SYSTEM,
-    messages: [{ role: 'user', content: idea }],
-    temperature: 0.7,
-  });
-  return stripFence(text).trim();
+export async function generateMasterPrompt(idea: string, choice?: ModelChoice, signal?: AbortSignal): Promise<Generated> {
+  const { text, provider, model } = await complete(
+    {
+      ...choice,
+      system: MASTER_PROMPT_SYSTEM,
+      messages: [{ role: 'user', content: idea }],
+      temperature: 0.7,
+    },
+    signal,
+  );
+  return { value: stripFence(text).trim(), provider, model };
 }
 
-export async function generateLanding(masterPrompt: string, choice?: ModelChoice): Promise<string> {
-  const text = await complete({
-    ...choice,
-    system: LANDING_SYSTEM,
-    messages: [{ role: 'user', content: landingUserMessage(masterPrompt) }],
-    temperature: 0.8,
-  });
-  return extractHtml(text);
+export async function generateLanding(masterPrompt: string, choice?: ModelChoice, signal?: AbortSignal): Promise<Generated> {
+  const { text, provider, model } = await complete(
+    {
+      ...choice,
+      system: LANDING_SYSTEM,
+      messages: [{ role: 'user', content: landingUserMessage(masterPrompt) }],
+      temperature: 0.8,
+    },
+    signal,
+  );
+  return { value: extractHtml(text), provider, model };
 }
 
 // Quita un bloque ```markdown ... ``` que envuelva toda la respuesta.

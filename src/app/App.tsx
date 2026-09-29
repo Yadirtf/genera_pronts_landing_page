@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { generateLanding, generateMasterPrompt } from '../engine/flow.ts';
+import { generateLanding, generateMasterPrompt, type Generated } from '../engine/flow.ts';
 import { getHealth, type Health, type ModelChoice } from '../providers/client.ts';
 import { ModelPicker, choiceKey, parseChoice } from './ModelPicker.tsx';
 
@@ -46,8 +46,12 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [choice, setChoice] = useState<ModelChoice | null>(null);
-  // Descarta respuestas que llegan después de "Nueva idea".
+  // Quién generó cada paso, para avisar si respondió un respaldo en vez del modelo elegido.
+  const [promptBy, setPromptBy] = useState<Origin | null>(null);
+  const [htmlBy, setHtmlBy] = useState<Origin | null>(null);
+  // Descarta respuestas que llegan después de "Nueva idea" y cancela la petición en curso.
   const runId = useRef(0);
+  const abort = useRef<AbortController | null>(null);
 
   useEffect(() => {
     getHealth()
@@ -58,14 +62,17 @@ export function App() {
       .catch((e: Error) => setHealthError(e.message));
   }, []);
 
-  async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
+  async function run(fn: (signal: AbortSignal) => Promise<Generated>): Promise<Generated | undefined> {
     const id = ++runId.current;
+    abort.current?.abort();
+    const controller = new AbortController();
+    abort.current = controller;
     setError(null);
     try {
-      const result = await fn();
+      const result = await fn(controller.signal);
       return id === runId.current ? result : undefined;
     } catch (e) {
-      if (id === runId.current) setError((e as Error).message);
+      if (id === runId.current && !controller.signal.aborted) setError((e as Error).message);
       return undefined;
     }
   }
@@ -77,29 +84,34 @@ export function App() {
     setDraft('');
     setHtml('');
     setPhase('prompting');
-    const result = await run(() => generateMasterPrompt(clean, choice ?? undefined));
+    const result = await run((signal) => generateMasterPrompt(clean, choice ?? undefined, signal));
     if (result === undefined) {
       setPhase('idle');
       setDraft(clean);
       return;
     }
-    setMasterPrompt(result);
+    setMasterPrompt(result.value);
+    setPromptBy({ by: result, asked: choice });
     setPhase('prompt');
   }
 
   async function build() {
     setPhase('building');
-    const result = await run(() => generateLanding(masterPrompt, choice ?? undefined));
+    const result = await run((signal) => generateLanding(masterPrompt, choice ?? undefined, signal));
     if (result === undefined) {
       setPhase(html ? 'done' : 'prompt');
       return;
     }
-    setHtml(result);
+    setHtml(result.value);
+    setHtmlBy({ by: result, asked: choice });
     setPhase('done');
   }
 
   function reset() {
     runId.current++;
+    abort.current?.abort();
+    setPromptBy(null);
+    setHtmlBy(null);
     setPhase('idle');
     setIdea('');
     setMasterPrompt('');
@@ -173,7 +185,10 @@ export function App() {
 
         {masterPrompt && started && phase !== 'prompting' && (
           <div className="card">
-            <p className="label">Prompt maestro · puedes editarlo antes de construir</p>
+            <p className="label">
+              Prompt maestro · puedes editarlo antes de construir
+              {promptBy && <GeneratedBy {...promptBy} />}
+            </p>
             <textarea
               className="prompt-editor"
               value={masterPrompt}
@@ -196,6 +211,12 @@ export function App() {
         {html && started && (
           <div className={`card preview${fullscreen ? ' fullscreen' : ''}`}>
             {/* Sin allow-same-origin: el código generado no puede tocar la app. */}
+            {htmlBy && (
+              <p className="label">
+                Landing
+                <GeneratedBy {...htmlBy} />
+              </p>
+            )}
             <iframe title="Vista previa de la landing" sandbox="allow-scripts" srcDoc={html} />
             <div className="actions">
               <button className="btn" onClick={download}>
@@ -227,5 +248,22 @@ export function App() {
         </form>
       )}
     </main>
+  );
+}
+
+// "· con gemini · gemini-flash-latest", y un aviso si respondió un respaldo en vez del modelo elegido.
+interface Origin {
+  by: ModelChoice;
+  asked: ModelChoice | null;
+}
+
+function GeneratedBy({ by, asked }: Origin) {
+  const fallback = asked && (asked.provider !== by.provider || asked.model !== by.model);
+  return (
+    <span className={fallback ? 'fallback' : undefined}>
+      {' · '}
+      {fallback ? 'respondió el respaldo ' : 'con '}
+      {by.provider} · {by.model}
+    </span>
   );
 }

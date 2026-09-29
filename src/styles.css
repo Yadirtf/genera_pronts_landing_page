@@ -125,6 +125,7 @@ body { margin: 0; background: var(--bg); }
   border-radius: var(--radius);
 }
 .label { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
+.label .fallback { color: var(--text); font-weight: 600; }
 .prompt-editor {
   width: 100%;
   min-height: 360px;

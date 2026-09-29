@@ -35,7 +35,7 @@ Proveedores disponibles: `anthropic`, `openai`, `gemini`, `openrouter` y `mistra
 
 En el chat, el selector de la cabecera permite elegir proveedor y modelo para cada generación. Solo aparecen los proveedores con clave en `.env`, agrupados en gratis y de pago según `server/providers/catalog.ts` (orientativo: cada proveedor cambia sus planes). Para ofrecer otro modelo, añádelo a ese archivo o ponlo en `<PROVEEDOR>_MODEL`.
 
-Ante un 429 o 5xx el servidor reintenta hasta 3 veces (2 s, 5 s, 10 s, o lo que indique `retry-after`). Si el modelo sigue fallando, prueba `<PROVEEDOR>_FALLBACK_MODEL` y, después, los otros proveedores con clave.
+Ante un 429 o 5xx el servidor reintenta hasta 3 veces (2 s, 5 s, 10 s, o lo que indique `retry-after`). Si el modelo sigue fallando, prueba `<PROVEEDOR>_FALLBACK_MODEL` (un reintento) y, después, los otros proveedores con clave con su modelo de `.env`, aunque hayas elegido otro en el selector. La interfaz avisa cuando respondió un respaldo. Por eso conviene tener al menos dos proveedores con clave.
 
 Ambos adaptadores implementan la interfaz `TextProvider` de `server/providers/types.ts`:
 

@@ -20,13 +20,22 @@ export interface ModelChoice {
   model: string;
 }
 
-export async function complete(req: CompleteRequest & { provider?: string }): Promise<string> {
+// Qué proveedor y modelo respondieron de verdad (puede ser un respaldo distinto del elegido).
+export interface Completion extends ModelChoice {
+  text: string;
+}
+
+export async function complete(
+  req: CompleteRequest & { provider?: string },
+  signal?: AbortSignal,
+): Promise<Completion> {
   const res = await fetch('/api/complete', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(req),
+    signal,
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
-  return data.text;
+  return data;
 }
