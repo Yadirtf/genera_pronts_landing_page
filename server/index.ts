@@ -79,7 +79,7 @@ app.post('/complete', async (c) => {
   const provider = providerId ? providers.get(providerId) : undefined;
   if (!provider) {
     return c.json(
-      { error: 'No hay proveedor configurado. Copia .env.example a .env y añade una clave.' },
+      { error: 'No hay proveedor configurado. Copia .env.example a .env y añade una clave.', code: 'no_provider' },
       503,
     );
   }
@@ -106,7 +106,7 @@ app.post('/complete', async (c) => {
     } catch (error) {
       lastStatus = error instanceof ProviderError ? error.status : 500;
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[${candidate.id}]`, message);
+      console.error(`[${candidate.id}] ${lastStatus}:`, error);
       errors.push(candidates.length > 1 ? `[${candidate.id}] ${message}` : message);
       if (signal.aborted) return c.json({ error: 'Cancelado.' }, 499 as 400);
       // Una petición mal formada falla igual en cualquier proveedor.
@@ -114,7 +114,10 @@ app.post('/complete', async (c) => {
     }
   }
 
-  return c.json({ error: errors.join('\n\n') }, (lastStatus >= 400 && lastStatus < 600 ? lastStatus : 502) as 502);
+  const status = lastStatus >= 400 && lastStatus < 600 ? lastStatus : 502;
+  console.error(`[complete] fallaron todos los proveedores (${candidates.map((p) => p.id).join(', ')}); se responde ${status}.`);
+  // El detalle técnico va en la respuesta para la consola del navegador; la interfaz muestra un texto amigable según el estado.
+  return c.json({ error: errors.join('\n\n') }, status as 502);
 });
 
 const port = Number(env.PORT) || 8787;

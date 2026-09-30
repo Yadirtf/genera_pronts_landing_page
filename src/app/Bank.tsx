@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { friendlyError } from './errors.ts';
 import { listLandings, migrateFromBrowser, type LandingSummary } from '../storage/bank.ts';
 import { formatDate } from './format.ts';
 import { href } from './route.ts';
@@ -14,7 +15,7 @@ export function Bank() {
     void migrateFromBrowser().then(setMoved);
     listLandings()
       .then(setLandings)
-      .catch((e: Error) => setError(`No se pudo leer el banco: ${e.message}`));
+      .catch((e) => setError(friendlyError(e, 'No pude cargar tus landings.')));
   }, []);
 
   return (

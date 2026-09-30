@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getHealth, type Health, type ModelChoice } from '../providers/client.ts';
 import { choiceKey, parseChoice } from './ModelPicker.tsx';
+import { friendlyError } from './errors.ts';
 
 const CHOICE_STORAGE_KEY = 'lienzo.model';
 
@@ -43,7 +44,7 @@ export function useModelChoice() {
         setHealth(h);
         setChoice(initialChoice(h));
       })
-      .catch((e: Error) => setHealthError(e.message));
+      .catch((e) => setHealthError(friendlyError(e, 'No pude consultar los modelos disponibles.')));
   }, []);
 
   function pick(next: ModelChoice) {

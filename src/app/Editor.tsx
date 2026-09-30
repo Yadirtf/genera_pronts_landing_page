@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { friendlyError } from './errors.ts';
 import { EditorView, basicSetup } from 'codemirror';
 import { html as htmlLanguage } from '@codemirror/lang-html';
 import { oneDark } from '@codemirror/theme-one-dark';
@@ -58,7 +59,7 @@ export function Editor({ id }: { id: string }) {
         setPreview(code.current);
         setLanding(l ?? null);
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e) => setError(friendlyError(e, 'No pude abrir esta landing.')));
   }, [id]);
 
   async function save() {
@@ -95,7 +96,7 @@ export function Editor({ id }: { id: string }) {
       setSaveState(saveTimer.current === undefined ? 'saved' : 'pending');
     } catch (e) {
       setSaveState('error');
-      setError(`No se pudo guardar: ${(e as Error).message}`);
+      setError(friendlyError(e, 'No pude guardar tus cambios.'));
     }
   }
 
