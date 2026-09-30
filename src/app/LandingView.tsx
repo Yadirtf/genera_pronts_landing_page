@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { tweakLanding } from '../engine/flow.ts';
 import { deleteLanding, getLanding, saveLanding, withVersion, type ChatEntry, type Landing } from '../storage/bank.ts';
 import { downloadHtml, fileNameFor } from './download.ts';
 import { formatDate } from './format.ts';
 import { ModelPicker } from './ModelPicker.tsx';
+import { Composer } from './Composer.tsx';
+import { friendlyError } from './errors.ts';
 import { href, navigate } from './route.ts';
 import { useModelChoice } from './useModelChoice.ts';
 
@@ -23,13 +25,18 @@ export function LandingView({ id }: { id: string }) {
   useEffect(() => {
     getLanding(id)
       .then((l) => setLanding(l ?? null))
-      .catch((e: Error) => setError(e.message));
+      .catch((e) => setError(friendlyError(e, 'No pude abrir esta landing.')));
     return () => abort.current?.abort();
   }, [id]);
 
   useEffect(() => {
     if (pending) bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [pending]);
+
+  // El aviso de error va al final del chat; se lleva a la vista para que el cuadro de mensaje no lo tape.
+  useEffect(() => {
+    if (error) window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+  }, [error]);
 
   const busy = pending !== null;
   const current = landing?.versions.at(-1)?.n;
@@ -59,7 +66,7 @@ export function LandingView({ id }: { id: string }) {
       setLanding(next);
     } catch (e) {
       if (controller.signal.aborted) return;
-      setError((e as Error).message);
+      setError(friendlyError(e, 'No pude aplicar el ajuste.'));
       // El pedido vuelve al cuadro de texto para reintentarlo o cambiar de modelo.
       setDraft(request);
     } finally {
@@ -90,7 +97,7 @@ export function LandingView({ id }: { id: string }) {
       setLanding(next);
       setError(null);
     } catch (e) {
-      setError((e as Error).message);
+      setError(friendlyError(e, 'No pude restaurar esa versión.'));
     }
   }
 
@@ -100,19 +107,7 @@ export function LandingView({ id }: { id: string }) {
       await deleteLanding(landing.id);
       navigate({ name: 'bank' });
     } catch (e) {
-      setError((e as Error).message);
-    }
-  }
-
-  function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    void sendTweak(draft);
-  }
-
-  function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      void sendTweak(draft);
+      setError(friendlyError(e, 'No pude eliminar la landing.'));
     }
   }
 
@@ -123,7 +118,6 @@ export function LandingView({ id }: { id: string }) {
           <a href={href({ name: 'chat' })}>Lienzo</a>
         </h1>
         <div className="top-actions">
-          {health && choice && <ModelPicker health={health} value={choice} onChange={pick} disabled={busy} />}
           <a className="btn ghost" href={href({ name: 'bank' })}>
             Mis landings
           </a>
@@ -177,24 +171,24 @@ export function LandingView({ id }: { id: string }) {
             </div>
           </>
         )}
-        {error && <p className="error">{error}</p>}
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
         <div ref={bottom} />
       </section>
 
       {landing && (
-        <form className="composer" onSubmit={onSubmit}>
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder="Pide un ajuste concreto. Ej.: cambia el botón principal a verde oliva y agrega una sección de preguntas frecuentes"
-            rows={2}
-            disabled={busy}
-          />
-          <button type="submit" disabled={busy || !draft.trim()}>
-            Ajustar
-          </button>
-        </form>
+        <Composer
+          value={draft}
+          onChange={setDraft}
+          onSend={(text) => void sendTweak(text)}
+          placeholder="Pide un ajuste concreto. Ej.: cambia el botón principal a verde oliva y agrega una sección de preguntas frecuentes"
+          sendLabel="Ajustar"
+          disabled={busy}
+          tools={health && choice && <ModelPicker health={health} value={choice} onChange={pick} disabled={busy} />}
+        />
       )}
     </main>
   );

@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { generateLanding, generateMasterPrompt, recommendTechniques, reviewLanding } from '../engine/flow.ts';
 import { TECHNIQUES, type Recommendation, type TechniqueId } from '../engine/techniques.ts';
 import type { ModelChoice } from '../providers/client.ts';
 import { ModelPicker } from './ModelPicker.tsx';
+import { Composer } from './Composer.tsx';
+import { friendlyError } from './errors.ts';
 import { useModelChoice } from './useModelChoice.ts';
 import { getLanding, newId, saveLanding, titleFor, withVersion, type ChatEntry, type Landing } from '../storage/bank.ts';
 import { downloadHtml, fileNameFor } from './download.ts';
@@ -49,7 +51,13 @@ export function Chat({ active }: { active: boolean }) {
     };
   }, [active, savedId]);
 
-  async function run<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T | undefined> {
+  // `context` dice qué se intentaba, para el mensaje que ve el usuario si falla.
+  // El aviso de error va al final del chat; se lleva a la vista para que el cuadro de mensaje no lo tape.
+  useEffect(() => {
+    if (error) window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+  }, [error]);
+
+  async function run<T>(context: string, fn: (signal: AbortSignal) => Promise<T>): Promise<T | undefined> {
     const id = ++runId.current;
     abort.current?.abort();
     const controller = new AbortController();
@@ -59,7 +67,7 @@ export function Chat({ active }: { active: boolean }) {
       const result = await fn(controller.signal);
       return id === runId.current ? result : undefined;
     } catch (e) {
-      if (id === runId.current && !controller.signal.aborted) setError((e as Error).message);
+      if (id === runId.current && !controller.signal.aborted) setError(friendlyError(e, context));
       return undefined;
     }
   }
@@ -72,7 +80,7 @@ export function Chat({ active }: { active: boolean }) {
     setDraft('');
     setHtml('');
     setPhase('recommending');
-    const result = await run((signal) => recommendTechniques(clean, choice ?? undefined, signal));
+    const result = await run('No pude analizar tu idea.', (signal) => recommendTechniques(clean, choice ?? undefined, signal));
     if (result === undefined) {
       setPhase('idle');
       setDraft(clean);
@@ -93,7 +101,7 @@ export function Chat({ active }: { active: boolean }) {
     const techniques = TECHNIQUES.map((t) => t.id).filter((id) => selected.includes(id));
     const back = masterPrompt ? (html ? 'done' : 'prompt') : 'choosing';
     setPhase('prompting');
-    const result = await run((signal) => generateMasterPrompt(idea, techniques, choice ?? undefined, signal));
+    const result = await run('No pude escribir el prompt maestro.', (signal) => generateMasterPrompt(idea, techniques, choice ?? undefined, signal));
     if (result === undefined) {
       setPhase(back);
       return;
@@ -113,7 +121,7 @@ export function Chat({ active }: { active: boolean }) {
 
   async function build() {
     setPhase('building');
-    const built = await run((signal) => generateLanding(masterPrompt, choice ?? undefined, signal));
+    const built = await run('No pude construir la landing.', (signal) => generateLanding(masterPrompt, choice ?? undefined, signal));
     if (built === undefined) {
       setPhase(html ? 'done' : 'prompt');
       return;
@@ -125,7 +133,7 @@ export function Chat({ active }: { active: boolean }) {
     if (promptTechniques.includes('critic')) {
       setPhase('reviewing');
       const before = runId.current;
-      const review = await run((signal) => reviewLanding(masterPrompt, built.value, choice ?? undefined, signal));
+      const review = await run('El agente crítico no pudo revisar la landing; te dejo la versión sin revisar.', (signal) => reviewLanding(masterPrompt, built.value, choice ?? undefined, signal));
       // Si se canceló ("Nueva idea"), no guardar nada; si falló, se queda la versión sin revisar y el error visible.
       if (runId.current !== before + 1) return;
       if (review) {
@@ -139,7 +147,7 @@ export function Chat({ active }: { active: boolean }) {
     try {
       await persist(result.value, masterPrompt, { provider: result.provider, model: result.model }, reviewed);
     } catch (e) {
-      setError(`La landing se generó pero no se pudo guardar en el banco: ${(e as Error).message}`);
+      setError(friendlyError(e, 'La landing se generó, pero no se pudo guardar en Mis landings.'));
     }
   }
 
@@ -200,28 +208,18 @@ export function Chat({ active }: { active: boolean }) {
     downloadHtml(html, fileNameFor(titleFor(html, idea)));
   }
 
-  function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    void sendIdea(draft);
-  }
-
-  function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      void sendIdea(draft);
-    }
-  }
-
   const busy = phase === 'recommending' || phase === 'prompting' || phase === 'building' || phase === 'reviewing';
   const started = phase !== 'idle';
+  const picker = health && choice && <ModelPicker health={health} value={choice} onChange={pick} disabled={busy} />;
 
   return (
     <main className="shell" hidden={!active}>
       <header className="top">
         <h1>Lienzo</h1>
         <div className="top-actions">
-          {health && choice ? (
-            <ModelPicker health={health} value={choice} onChange={pick} disabled={busy} />
+          {/* Antes de empezar, el selector va dentro del cuadro de mensaje; después, aquí arriba. */}
+          {picker ? (
+            started && picker
           ) : (
             <span className="status">
               {healthError ? 'Servidor local sin conexión' : !health ? 'Conectando…' : 'Sin proveedor: configura .env'}
@@ -372,23 +370,23 @@ export function Chat({ active }: { active: boolean }) {
           </div>
         )}
 
-        {error && <p className="error">{error}</p>}
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
       </section>
 
       {!started && (
-        <form className="composer" onSubmit={onSubmit}>
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder="Ej.: una landing para mi estudio de yoga en Medellín; quiero que reserven la primera clase gratis por WhatsApp"
-            rows={3}
-            autoFocus
-          />
-          <button type="submit" disabled={!draft.trim()}>
-            Enviar
-          </button>
-        </form>
+        <Composer
+          value={draft}
+          onChange={setDraft}
+          onSend={(text) => void sendIdea(text)}
+          placeholder="Describe la landing que necesitas. Ej.: una landing para mi estudio de yoga en Medellín; quiero que reserven la primera clase gratis por WhatsApp"
+          sendLabel="Enviar"
+          autoFocus
+          tools={picker}
+        />
       )}
     </main>
   );

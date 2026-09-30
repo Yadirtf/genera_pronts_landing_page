@@ -1,5 +1,6 @@
 // Flujo: idea -> técnicas (3 recomendadas) -> prompt maestro (editable) -> landing HTML (-> crítico).
 import { complete, type ModelChoice } from '../providers/client.ts';
+import { UserError } from '../app/errors.ts';
 
 export interface Generated extends ModelChoice {
   value: string;
@@ -113,7 +114,7 @@ export async function tweakLanding(
   const value = extractHtml(text);
   // Una respuesta sin </html> suele venir cortada por el límite de salida del modelo.
   if (!/<\/html>\s*$/i.test(value)) {
-    throw new Error('La respuesta del modelo llegó incompleta (sin </html>), así que no la apliqué. Prueba otra vez o elige otro modelo.');
+    throw new UserError('La respuesta del modelo llegó cortada, así que no la apliqué. Prueba otra vez o elige otro modelo.');
   }
   return { value, provider, model };
 }
@@ -134,7 +135,7 @@ export function extractHtml(text: string): string {
   if (end !== -1) html = html.slice(0, end + '</html>'.length);
   html = html.trim();
   if (!/<html[\s>]/i.test(html)) {
-    throw new Error('El modelo no devolvió un documento HTML. Intenta de nuevo.');
+    throw new UserError('El modelo no devolvió una página web válida. Intenta de nuevo o elige otro modelo.');
   }
   return html;
 }

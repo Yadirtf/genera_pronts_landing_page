@@ -2,6 +2,7 @@
 import type { ModelChoice } from '../providers/client.ts';
 import type { TechniqueId } from '../engine/techniques.ts';
 import { deleteLegacyLanding, readLegacyLandings } from './legacyIdb.ts';
+import { ApiError, fetchJson } from '../app/errors.ts';
 
 export interface ChatEntry {
   role: 'user' | 'assistant';
@@ -70,16 +71,8 @@ function normalize(l: Landing): Landing {
   return { ...l, chat: l.chat ?? [], versions: [{ n: 1, html: l.html, at: l.updatedAt, note: 'Versión guardada' }] };
 }
 
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(`/api/landings${path}`, init);
-  } catch {
-    throw new Error('El servidor local no responde; arráncalo con npm start.');
-  }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? `Error ${res.status} del servidor local`);
-  return data as T;
+function api<T>(path: string, init?: RequestInit): Promise<T> {
+  return fetchJson<T>(`/api/landings${path}`, init);
 }
 
 function put(landing: Landing, onlyIfMissing = false) {
@@ -123,7 +116,7 @@ export async function getLanding(id: string): Promise<Landing | undefined> {
   try {
     return normalize(await api<Landing>(`/${encodeURIComponent(id)}`));
   } catch (e) {
-    if ((e as Error).message === 'No existe.') return undefined;
+    if (e instanceof ApiError && e.status === 404) return undefined;
     throw e;
   }
 }

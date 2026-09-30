@@ -1,4 +1,5 @@
 import type { CompleteRequest, ProviderInfo } from '../../server/providers/types.ts';
+import { fetchJson } from '../app/errors.ts';
 
 // Cliente del servidor local. El navegador nunca habla directo con el proveedor.
 
@@ -8,10 +9,8 @@ export interface Health {
   providers: ProviderInfo[];
 }
 
-export async function getHealth(): Promise<Health> {
-  const res = await fetch('/api/health');
-  if (!res.ok) throw new Error(`Servidor local no disponible (${res.status})`);
-  return res.json();
+export function getHealth(): Promise<Health> {
+  return fetchJson<Health>('/api/health');
 }
 
 // Proveedor y modelo elegidos en el selector del chat.
@@ -25,17 +24,11 @@ export interface Completion extends ModelChoice {
   text: string;
 }
 
-export async function complete(
-  req: CompleteRequest & { provider?: string },
-  signal?: AbortSignal,
-): Promise<Completion> {
-  const res = await fetch('/api/complete', {
+export function complete(req: CompleteRequest & { provider?: string }, signal?: AbortSignal): Promise<Completion> {
+  return fetchJson<Completion>('/api/complete', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(req),
     signal,
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
-  return data;
 }
