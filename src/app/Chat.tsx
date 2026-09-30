@@ -1,48 +1,19 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { generateLanding, generateMasterPrompt, recommendTechniques, reviewLanding } from '../engine/flow.ts';
 import { TECHNIQUES, type Recommendation, type TechniqueId } from '../engine/techniques.ts';
-import { getHealth, type Health, type ModelChoice } from '../providers/client.ts';
-import { ModelPicker, choiceKey, parseChoice } from './ModelPicker.tsx';
-import { getLanding, newId, saveLanding, titleFor, type ChatEntry } from '../storage/db.ts';
+import type { ModelChoice } from '../providers/client.ts';
+import { ModelPicker } from './ModelPicker.tsx';
+import { useModelChoice } from './useModelChoice.ts';
+import { getLanding, newId, saveLanding, titleFor, withVersion, type ChatEntry, type Landing } from '../storage/bank.ts';
 import { downloadHtml, fileNameFor } from './download.ts';
 import { href, navigate } from './route.ts';
-
-const CHOICE_STORAGE_KEY = 'lienzo.model';
-
-function readStoredChoice(): string | null {
-  try {
-    return localStorage.getItem(CHOICE_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function storeChoice(choice: ModelChoice) {
-  try {
-    localStorage.setItem(CHOICE_STORAGE_KEY, choiceKey(choice));
-  } catch {
-    // Sin almacenamiento (modo privado): la elección dura solo esta sesión.
-  }
-}
-
-// Recupera la última elección si sigue disponible; si no, el proveedor y modelo por defecto de .env.
-function initialChoice(health: Health): ModelChoice | null {
-  const stored = readStoredChoice();
-  if (stored) {
-    const c = parseChoice(stored);
-    if (health.providers.some((p) => p.id === c.provider && p.models.some((m) => m.id === c.model))) return c;
-  }
-  const p = health.providers.find((p) => p.id === health.defaultProvider) ?? health.providers[0];
-  return p ? { provider: p.id, model: p.model } : null;
-}
 
 // Idea -> elegir técnicas (3 recomendadas) -> prompt maestro editable -> landing en un iframe aislado.
 type Phase = 'idle' | 'recommending' | 'choosing' | 'prompting' | 'prompt' | 'building' | 'reviewing' | 'done';
 
 // El chat sigue montado (oculto) mientras se ve el banco o el editor, para no perder una generación en curso.
 export function Chat({ active }: { active: boolean }) {
-  const [health, setHealth] = useState<Health | null>(null);
-  const [healthError, setHealthError] = useState<string | null>(null);
+  const { health, healthError, choice, pick } = useModelChoice();
   const [phase, setPhase] = useState<Phase>('idle');
   const [draft, setDraft] = useState('');
   const [idea, setIdea] = useState('');
@@ -55,7 +26,6 @@ export function Chat({ active }: { active: boolean }) {
   const [html, setHtml] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
-  const [choice, setChoice] = useState<ModelChoice | null>(null);
   // Quién generó cada paso, para avisar si respondió un respaldo en vez del modelo elegido.
   const [promptBy, setPromptBy] = useState<Origin | null>(null);
   const [htmlBy, setHtmlBy] = useState<Origin | null>(null);
@@ -66,15 +36,6 @@ export function Chat({ active }: { active: boolean }) {
   const [savedId, setSavedId] = useState<string | null>(null);
   const ideaAt = useRef(0);
   const generatedPrompt = useRef<ChatEntry | null>(null);
-
-  useEffect(() => {
-    getHealth()
-      .then((h) => {
-        setHealth(h);
-        setChoice(initialChoice(h));
-      })
-      .catch((e: Error) => setHealthError(e.message));
-  }, []);
 
   // Al volver del editor, mostrar el código editado.
   useEffect(() => {
@@ -196,27 +157,24 @@ export function Chat({ active }: { active: boolean }) {
     if (!existing && generatedPrompt.current) chat.push(generatedPrompt.current);
     const lastPrompt = chat.filter((e) => e.kind === 'prompt').pop();
     if (lastPrompt?.text !== usedPrompt) chat.push({ role: 'user', kind: 'prompt', text: usedPrompt, at: now });
-    chat.push({
-      role: 'assistant',
-      kind: 'landing',
-      text: `${existing ? 'Reconstruí la landing' : 'Construí la landing'}${reviewed ? ' y el agente crítico la revisó.' : '.'}`,
-      at: now,
-      by,
-    });
-    const id = existing?.id ?? newId();
-    await saveLanding({
-      id,
+    const text = `${existing ? 'Reconstruí la landing' : 'Construí la landing'}${reviewed ? ' y el agente crítico la revisó.' : '.'}`;
+    const base: Landing = {
+      id: existing?.id ?? newId(),
       title: titleFor(nextHtml, idea),
       idea,
       masterPrompt: usedPrompt,
       techniques: promptTechniques,
       html: nextHtml,
       chat,
+      versions: existing?.versions ?? [],
       by,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
-    });
-    setSavedId(id);
+    };
+    const next = withVersion(base, nextHtml, existing ? 'Reconstruida desde el prompt' : 'Primera versión', by, now);
+    chat.push({ role: 'assistant', kind: 'landing', text, at: now, by, version: next.versions.at(-1)!.n });
+    await saveLanding(next);
+    setSavedId(next.id);
   }
 
   function reset() {
@@ -256,10 +214,6 @@ export function Chat({ active }: { active: boolean }) {
 
   const busy = phase === 'recommending' || phase === 'prompting' || phase === 'building' || phase === 'reviewing';
   const started = phase !== 'idle';
-  function pick(next: ModelChoice) {
-    setChoice(next);
-    storeChoice(next);
-  }
 
   return (
     <main className="shell" hidden={!active}>
@@ -390,6 +344,18 @@ export function Chat({ active }: { active: boolean }) {
               <button className="btn ghost" onClick={() => setFullscreen((f) => !f)}>
                 {fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
               </button>
+              {savedId && (
+                <button
+                  className="btn ghost"
+                  onClick={() => {
+                    setFullscreen(false);
+                    navigate({ name: 'landing', id: savedId });
+                  }}
+                  disabled={busy}
+                >
+                  Seguir mejorando
+                </button>
+              )}
               {savedId && (
                 <button
                   className="btn ghost"

@@ -7,6 +7,7 @@ export interface Generated extends ModelChoice {
 import { MASTER_PROMPT_SYSTEM } from './prompts/masterPrompt.ts';
 import { LANDING_SYSTEM, landingUserMessage } from './prompts/landing.ts';
 import { CRITIC_SYSTEM, criticUserMessage } from './prompts/critic.ts';
+import { TWEAK_SYSTEM, tweakUserMessage } from './prompts/tweak.ts';
 import {
   DEFAULT_RECOMMENDATION,
   RECOMMEND_SYSTEM,
@@ -90,6 +91,31 @@ export async function reviewLanding(
     signal,
   );
   return { value: extractHtml(text), provider, model };
+}
+
+// Chat de ajustes: aplica un pedido concreto sobre el HTML actual y devuelve el documento completo.
+export async function tweakLanding(
+  html: string,
+  request: string,
+  previous: string[],
+  choice?: ModelChoice,
+  signal?: AbortSignal,
+): Promise<Generated> {
+  const { text, provider, model } = await complete(
+    {
+      ...choice,
+      system: TWEAK_SYSTEM,
+      messages: [{ role: 'user', content: tweakUserMessage(html, request, previous.slice(-5)) }],
+      temperature: 0.4,
+    },
+    signal,
+  );
+  const value = extractHtml(text);
+  // Una respuesta sin </html> suele venir cortada por el límite de salida del modelo.
+  if (!/<\/html>\s*$/i.test(value)) {
+    throw new Error('La respuesta del modelo llegó incompleta (sin </html>), así que no la apliqué. Prueba otra vez o elige otro modelo.');
+  }
+  return { value, provider, model };
 }
 
 // Quita un bloque ```markdown ... ``` que envuelva toda la respuesta.

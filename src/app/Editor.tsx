@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as R
 import { EditorView, basicSetup } from 'codemirror';
 import { html as htmlLanguage } from '@codemirror/lang-html';
 import { oneDark } from '@codemirror/theme-one-dark';
-import { getLanding, saveLanding, titleFor, type Landing } from '../storage/db.ts';
+import { getLanding, saveLanding, titleFor, withVersion, type Landing } from '../storage/bank.ts';
 import { downloadHtml, fileNameFor } from './download.ts';
 import { href } from './route.ts';
 
@@ -47,7 +47,7 @@ export function Editor({ id }: { id: string }) {
   const record = useRef<Landing | null>(null);
   const previewTimer = useRef<number | undefined>(undefined);
   const saveTimer = useRef<number | undefined>(undefined);
-  // Una sola entrada "Editaste el código" en el historial por cada visita al editor.
+  // Una sola entrada "Editaste el código" (y una sola versión) en el historial por cada visita al editor.
   const editAt = useRef<number | null>(null);
 
   useEffect(() => {
@@ -75,13 +75,19 @@ export function Editor({ id }: { id: string }) {
     const now = Date.now();
     const chat = [...current.chat];
     const last = chat[chat.length - 1];
-    if (editAt.current !== null && last?.kind === 'edit' && last.at === editAt.current) {
+    const lastVersion = current.versions.at(-1);
+    let next: Landing;
+    if (editAt.current !== null && last?.kind === 'edit' && last.at === editAt.current && lastVersion && lastVersion.n === last.version) {
+      // Seguir escribiendo en la misma visita actualiza esa versión en vez de crear otra.
       chat[chat.length - 1] = { ...last, at: now };
+      const versions = [...current.versions];
+      versions[versions.length - 1] = { ...lastVersion, html, at: now };
+      next = { ...current, html, title: titleFor(html, current.idea), chat, versions, updatedAt: now };
     } else {
-      chat.push({ role: 'user', kind: 'edit', text: 'Editaste el código de la landing.', at: now });
+      next = withVersion({ ...current, chat }, html, 'Edición de código', undefined, now);
+      chat.push({ role: 'user', kind: 'edit', text: 'Editaste el código de la landing.', at: now, version: next.versions.at(-1)!.n });
     }
     editAt.current = now;
-    const next: Landing = { ...current, html, title: titleFor(html, current.idea), chat, updatedAt: now };
     try {
       await saveLanding(next);
       record.current = next;
