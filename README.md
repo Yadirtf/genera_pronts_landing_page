@@ -15,17 +15,20 @@ npm start
 - **Servidor local** (`server/index.ts`, Hono) en `http://127.0.0.1:8787`. Guarda las claves y hace de proxy a los proveedores.
 - **Interfaz** (Vite + React) en `http://localhost:5173`. Redirige `/api` al servidor local.
 
-## Mis landings y editor
+## Mis landings, chat de ajustes y editor
 
-Cada landing construida se guarda sola en el navegador (IndexedDB, base `lienzo`) con su HTML, el prompt maestro, el historial del chat, el modelo y la fecha. **Mis landings** (`#/banco`) las muestra en tarjetas con miniatura; al abrir una se ve el historial del chat y la versión actual.
+Cada landing construida se guarda en disco, en la carpeta `data/landings/` del proyecto (ignorada por git), a través del servidor local: un `<id>.json` con el HTML, el prompt maestro, el historial del chat, las versiones, el modelo y las fechas, y un `<id>.html` con la versión actual para abrirla directo. Así el banco sobrevive a apagar el equipo, cerrar el navegador, borrar sus datos, usar otro navegador o cambiar de puerto. Para guardarlo en otra carpeta, pon `LIENZO_DATA_DIR` en `.env`. Las landings que quedaron guardadas en el navegador con la versión anterior se mueven solas a `data/` la primera vez que abres Mis landings.
 
-**Editar** (debajo de la landing, junto a Descargar y Pantalla completa) abre el editor (`#/editar/<id>`): código a la izquierda con CodeMirror, vista previa en vivo a la derecha. La barra que los separa se arrastra (o se mueve con las flechas) para cambiar el ancho; arriba de la vista previa se elige Ajustar (la página se adapta al ancho del panel), Móvil (390 px), Tablet (768 px) o Escritorio (1440 px, escalado si no cabe). Los cambios se guardan solos en el banco.
+**Mis landings** (`#/banco`) las muestra en tarjetas con miniatura. Al abrir una (`#/landing/<id>`) se ve el historial del chat y la versión actual, y abajo un **chat de ajustes** para seguir mejorándola con pedidos concretos ("cambia el botón a verde", "agrega preguntas frecuentes"). Cada ajuste, reconstrucción o visita al editor crea una versión nueva, y cualquier versión anterior se recupera con **Volver a esta versión**.
+
+**Editar** abre el editor (`#/editar/<id>`): código a la izquierda con CodeMirror, vista previa en vivo a la derecha. La barra que los separa se arrastra (o se mueve con las flechas) para cambiar el ancho; arriba de la vista previa se elige Ajustar (la página se adapta al ancho del panel), Móvil (390 px), Tablet (768 px) o Escritorio (1440 px, escalado si no cabe). Los cambios se guardan solos.
 
 ## API del servidor local
 
 | Ruta | Descripción |
 |---|---|
 | `GET /api/health` | Proveedores configurados y el proveedor por defecto |
+| `GET/PUT/DELETE /api/landings[/:id]` | Banco de landings en `data/landings/` |
 | `POST /api/complete` | `{ provider?, system, messages, schema?, temperature? }` → `{ provider, model, text }` |
 
 Prueba rápida:

@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
+import { DATA_DIR, landings } from './landings.ts';
 import { createAnthropicProvider } from './providers/anthropic.ts';
 import { createOpenAICompatibleProvider } from './providers/openai-compatible.ts';
 import { ProviderError, type CompleteRequest, type ProviderInfo, type TextProvider } from './providers/types.ts';
@@ -54,6 +55,8 @@ if (env.DEFAULT_PROVIDER && !providers.has(env.DEFAULT_PROVIDER)) {
 }
 
 const app = new Hono().basePath('/api');
+
+app.route('/landings', landings);
 
 app.get('/health', (c) => {
   const list: ProviderInfo[] = [...providers.values()].map(({ id, model, capabilities, models }) => ({
@@ -118,4 +121,5 @@ const port = Number(env.PORT) || 8787;
 serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, () => {
   const names = [...providers.keys()].join(', ') || 'ninguno';
   console.log(`Servidor local en http://127.0.0.1:${port} · proveedores: ${names}`);
+  console.log(`Banco de landings en ${DATA_DIR}`);
 });

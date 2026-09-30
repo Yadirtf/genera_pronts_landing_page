@@ -3,3 +3,5 @@ dist
 *.tsbuildinfo
 .env
 .env.local
+# Banco de landings local (server/landings.ts)
+data
