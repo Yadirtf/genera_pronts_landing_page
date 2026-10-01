@@ -7,6 +7,8 @@ export interface Health {
   ok: boolean;
   defaultProvider: string | null;
   providers: ProviderInfo[];
+  // true si el servidor tiene UNSPLASH_ACCESS_KEY y puede poner fotos reales.
+  images?: boolean;
 }
 
 export function getHealth(): Promise<Health> {

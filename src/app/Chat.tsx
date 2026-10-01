@@ -144,6 +144,8 @@ export function Chat({ active }: { active: boolean }) {
       }
     }
     setPhase('done');
+    // Aviso de fotos (p. ej. sin clave de Unsplash o límite por hora): la landing sí se construyó.
+    if (result.notice) setError(result.notice);
     try {
       await persist(result.value, masterPrompt, { provider: result.provider, model: result.model }, reviewed);
     } catch (e) {
