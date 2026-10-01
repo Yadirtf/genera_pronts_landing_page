@@ -64,6 +64,7 @@ export function LandingView({ id }: { id: string }) {
       ];
       await saveLanding(next);
       setLanding(next);
+      if (result.notice) setError(result.notice);
     } catch (e) {
       if (controller.signal.aborted) return;
       setError(friendlyError(e, 'No pude aplicar el ajuste.'));

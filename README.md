@@ -23,12 +23,21 @@ Cada landing construida se guarda en disco, en la carpeta `data/landings/` del p
 
 **Editar** abre el editor (`#/editar/<id>`): código a la izquierda con CodeMirror, vista previa en vivo a la derecha. La barra que los separa se arrastra (o se mueve con las flechas) para cambiar el ancho; arriba de la vista previa se elige Ajustar (la página se adapta al ancho del panel), Móvil (390 px), Tablet (768 px) o Escritorio (1440 px, escalado si no cabe). Los cambios se guardan solos.
 
+## Fotos con Unsplash
+
+Con `UNSPLASH_ACCESS_KEY` en `.env`, las landings llevan fotos reales en vez de ilustraciones SVG. Crea una app en [unsplash.com/oauth/applications](https://unsplash.com/oauth/applications), copia su **Access Key** a `.env` y reinicia el servidor (la consola dice `Fotos: Unsplash`). Sin clave todo funciona como antes.
+
+Cómo funciona: el modelo no inventa URLs; marca cada foto con palabras clave (`<img data-unsplash="yoga studio sunlight" alt="…">`) y la app las busca en Unsplash a través del servidor local, que guarda la clave. Cada `<img>` resuelto guarda su búsqueda, el id y el autor de la foto, así que los ajustes del chat, las versiones y el editor la conservan; solo se buscan las imágenes nuevas o cuyas palabras clave cambiaron (para cambiar una foto basta con pedirlo en el chat de ajustes). Siguiendo las [normas de Unsplash](https://help.unsplash.com/en/articles/2511245-unsplash-api-guidelines), las fotos se enlazan directo desde `images.unsplash.com`, cada uso se registra en su endpoint de descarga y la página añade al pie el crédito a los fotógrafos con enlace (`UNSPLASH_APP_NAME` va en esos enlaces).
+
+Si Unsplash falla (clave inválida, o el límite de 50 búsquedas por hora del modo demo), la landing se construye igual con marcadores grises y un aviso; el detalle queda en la consola. Esos huecos se rellenan en el siguiente ajuste.
+
 ## API del servidor local
 
 | Ruta | Descripción |
 |---|---|
 | `GET /api/health` | Proveedores configurados y el proveedor por defecto |
 | `GET/PUT/DELETE /api/landings[/:id]` | Banco de landings en `data/landings/` |
+| `POST /api/images` | `{ queries: [{ query, orientation? }], exclude? }` → `{ photos }`, búsqueda en Unsplash (requiere `UNSPLASH_ACCESS_KEY`) |
 | `POST /api/complete` | `{ provider?, system, messages, schema?, temperature? }` → `{ provider, model, text }` |
 
 Prueba rápida:

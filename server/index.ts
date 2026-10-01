@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
+import { images, imagesEnabled } from './images.ts';
 import { DATA_DIR, landings } from './landings.ts';
 import { createAnthropicProvider } from './providers/anthropic.ts';
 import { createOpenAICompatibleProvider } from './providers/openai-compatible.ts';
@@ -57,6 +58,7 @@ if (env.DEFAULT_PROVIDER && !providers.has(env.DEFAULT_PROVIDER)) {
 const app = new Hono().basePath('/api');
 
 app.route('/landings', landings);
+app.route('/images', images);
 
 app.get('/health', (c) => {
   const list: ProviderInfo[] = [...providers.values()].map(({ id, model, capabilities, models }) => ({
@@ -65,7 +67,8 @@ app.get('/health', (c) => {
     capabilities,
     models,
   }));
-  return c.json({ ok: true, defaultProvider: defaultProviderId ?? null, providers: list });
+  // images: si hay clave de Unsplash, las landings usan fotos reales en vez de ilustraciones SVG.
+  return c.json({ ok: true, defaultProvider: defaultProviderId ?? null, providers: list, images: imagesEnabled });
 });
 
 app.post('/complete', async (c) => {
@@ -125,4 +128,5 @@ serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, () => {
   const names = [...providers.keys()].join(', ') || 'ninguno';
   console.log(`Servidor local en http://127.0.0.1:${port} · proveedores: ${names}`);
   console.log(`Banco de landings en ${DATA_DIR}`);
+  console.log(imagesEnabled ? 'Fotos: Unsplash' : 'Fotos: sin UNSPLASH_ACCESS_KEY, las landings usan ilustraciones SVG');
 });

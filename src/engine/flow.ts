@@ -4,9 +4,12 @@ import { UserError } from '../app/errors.ts';
 
 export interface Generated extends ModelChoice {
   value: string;
+  // Aviso amigable si algo secundario falló (p. ej. no se pudieron traer las fotos).
+  notice?: string;
 }
 import { MASTER_PROMPT_SYSTEM } from './prompts/masterPrompt.ts';
-import { LANDING_SYSTEM, landingUserMessage } from './prompts/landing.ts';
+import { PHOTO_RULES, landingSystem, landingUserMessage } from './prompts/landing.ts';
+import { hasPhotoSlots, photosEnabled, resolveImages } from './images.ts';
 import { CRITIC_SYSTEM, criticUserMessage } from './prompts/critic.ts';
 import { TWEAK_SYSTEM, tweakUserMessage } from './prompts/tweak.ts';
 import {
@@ -66,13 +69,13 @@ export async function generateLanding(masterPrompt: string, choice?: ModelChoice
   const { text, provider, model } = await complete(
     {
       ...choice,
-      system: LANDING_SYSTEM,
+      system: landingSystem(await photosEnabled()),
       messages: [{ role: 'user', content: landingUserMessage(masterPrompt) }],
       temperature: 0.8,
     },
     signal,
   );
-  return { value: extractHtml(text), provider, model };
+  return withPhotos(extractHtml(text), { provider, model }, signal);
 }
 
 // Técnica "Agente crítico": audita la landing contra el prompt maestro y devuelve el HTML corregido.
@@ -85,13 +88,13 @@ export async function reviewLanding(
   const { text, provider, model } = await complete(
     {
       ...choice,
-      system: CRITIC_SYSTEM,
+      system: withPhotoRules(CRITIC_SYSTEM, await photosEnabled()),
       messages: [{ role: 'user', content: criticUserMessage(masterPrompt, html) }],
       temperature: 0.4,
     },
     signal,
   );
-  return { value: extractHtml(text), provider, model };
+  return withPhotos(extractHtml(text), { provider, model }, signal);
 }
 
 // Chat de ajustes: aplica un pedido concreto sobre el HTML actual y devuelve el documento completo.
@@ -105,7 +108,8 @@ export async function tweakLanding(
   const { text, provider, model } = await complete(
     {
       ...choice,
-      system: TWEAK_SYSTEM,
+      // Las reglas de fotos van si el servidor tiene clave o si la landing ya usa fotos de Unsplash.
+      system: withPhotoRules(TWEAK_SYSTEM, hasPhotoSlots(html) || (await photosEnabled())),
       messages: [{ role: 'user', content: tweakUserMessage(html, request, previous.slice(-5)) }],
       temperature: 0.4,
     },
@@ -116,7 +120,17 @@ export async function tweakLanding(
   if (!/<\/html>\s*$/i.test(value)) {
     throw new UserError('La respuesta del modelo llegó cortada, así que no la apliqué. Prueba otra vez o elige otro modelo.');
   }
-  return { value, provider, model };
+  return withPhotos(value, { provider, model }, signal);
+}
+
+function withPhotoRules(system: string, photos: boolean): string {
+  return photos ? `${system}\n\n${PHOTO_RULES}` : system;
+}
+
+// Cambia los <img data-unsplash> nuevos por fotos reales. Si falla, la landing sigue con marcadores y un aviso.
+async function withPhotos(html: string, by: ModelChoice, signal?: AbortSignal): Promise<Generated> {
+  const { html: value, notice } = await resolveImages(html, signal);
+  return { value, notice, ...by };
 }
 
 // Quita un bloque ```markdown ... ``` que envuelva toda la respuesta.
